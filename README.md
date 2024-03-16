@@ -1,6 +1,10 @@
 # EnumVisitorGenerator
 If you mark an enum with the ```[EnumVisitorGenerator.VisitorGenerator]``` attribute, the source generator will generate several "Visitor" interfaces, where each method will correspond to an item of the target enum. Additionally, an extension class with methods will be generated where the target enum is switched and corresponding visitor interface methods are called.
 
+# Installation
+```
+PM> NuGet\Install-Package EnumVisitorGenerator
+```
 # Example
 
 ## Target Enum

@@ -18,9 +18,9 @@ public class Program
     [Benchmark]
     public void Class()
     {
+        var visitor = new VisitorClass();
         for (int i = 0; i < Iterations; i++)
         {
-            var visitor = new VisitorClass();
             Color.Green.Accept(visitor, true);
         }
     }
@@ -28,9 +28,9 @@ public class Program
     [Benchmark]
     public void StructBoxing()
     {
+        var visitor = new VisitorStruct();
         for (int i = 0; i < Iterations; i++)
         {
-            var visitor = new VisitorStruct();
             Color.Green.Accept(visitor, true);
         }
     }
@@ -38,15 +38,15 @@ public class Program
     [Benchmark]
     public void StructNoBoxing()
     {
+        var visitor = new VisitorStruct();
         for (int i = 0; i < Iterations; i++)
         {
-            var visitor = new VisitorStruct();
             Color.Green.Accept<string, VisitorStruct, bool>(ref visitor, true);
         }
     }
 }
 
-public struct VisitorClass : IColorVisitor<string, bool>
+public class VisitorClass : IColorVisitor<string, bool>
 {
     public string CaseRed(bool eng) => eng ? "Red" : "Rojo";
 
