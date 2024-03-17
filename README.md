@@ -187,3 +187,4 @@ var translation = new ColorTranslation();
 //boxing does not happen here
 Console.WriteLine(Color.Red.Accept<string, ColorTranslation, bool>(ref translation, false));
 ```
+You can find [more details in this article.](https://itnext.io/achieving-allocation-free-polymorphism-in-c-8eb3c99edbce?source=friends_link&sk=84ff56937fdb4c1100e6ec49f0ee96c1)
