@@ -10,22 +10,24 @@
     <Authors>Dmitry Tikhonov</Authors>
     <Copyright>Dmitry Tikhonov</Copyright>
     <Company />
-    <Version>1.0.0</Version>
-    <Summary>It generates "visitor" pattern for marked enums</Summary>
+    <Version>1.1.0</Version>
+    <Summary>Generates visitor interfaces and extension methods for marked enums</Summary>
     <Description>
-      If you mark an enum with the [VisitorGenerator] attribute, the source generator will generate several "Visitor" interfaces, where each method will correspond to an item of the target enum. Additionally, an extension class with methods will be generated where the target enum is switched and corresponding visitor interface methods are called.
-      This helps to avoid error-prone direct switches.
+      Mark an enum with [VisitorGenerator] and the source generator creates visitor interfaces and strongly-typed Accept extension methods that dispatch by enum member.
+      It also supports [VisitorToMethod] on stateless struct visitors to generate ergonomic enum extension wrappers, including tuple argument flattening.
+      This helps replace error-prone manual switches while keeping allocation-free struct visitor paths.
     </Description>
     <PackageReleaseNotes>https://github.com/0x1000000/EnumVisitorGenerator/blob/main/CHANGELOG.md</PackageReleaseNotes>
     <PackageProjectUrl>https://github.com/0x1000000/EnumVisitorGenerator</PackageProjectUrl>
-    <PackageTags>enum visitor interface sourcegenerator</PackageTags>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+    <PackageTags>enum visitor sourcegenerator roslyn codegen switch extension-method</PackageTags>
+    <AssemblyVersion>1.1.0</AssemblyVersion>
+    <FileVersion>1.1.0</FileVersion>
     <SignAssembly>True</SignAssembly>
     <DelaySign>false</DelaySign>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <AssemblyOriginatorKeyFile>.\..\EnumVisitorGenerator.snk</AssemblyOriginatorKeyFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
   <ItemGroup>

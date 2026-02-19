@@ -59,9 +59,10 @@ namespace TestSpace
 
             Assert.AreEqual(diagnostics[0].Descriptor.Id, "EG0003");
 
-            Assert.AreEqual(3, genResult.Count);
+            Assert.AreEqual(4, genResult.Count);
 
             Assert.IsTrue(genResult.ContainsKey("VisitorGeneratorAttribute.g.cs"));
+            Assert.IsTrue(genResult.ContainsKey("VisitorToMethodAttribute.g.cs"));
             Assert.IsTrue(genResult.ContainsKey("TestSpace.StateEnumExtension.cs"));
             Assert.IsTrue(genResult.ContainsKey("TestSpace.InternalStateEnumExtension.cs"));
 
@@ -69,8 +70,10 @@ namespace TestSpace
                 "namespace EnumVisitorGenerator { [global::System.AttributeUsage(global::System.AttributeTargets.Enum)][global::System.Diagnostics.Conditional(\"ENUM_VISITOR_GENERATOR_USAGES\")] internal class VisitorGeneratorAttribute : global::System.Attribute { } }",
                 genResult["VisitorGeneratorAttribute.g.cs"]
             );
-
-            Console.WriteLine(genResult["TestSpace.InternalStateEnumExtension.cs"]);
+            Assert.AreEqual(
+                "namespace EnumVisitorGenerator { [global::System.AttributeUsage(global::System.AttributeTargets.Struct)][global::System.Diagnostics.Conditional(\"ENUM_VISITOR_GENERATOR_USAGES\")] internal class VisitorToMethodAttribute : global::System.Attribute { public VisitorToMethodAttribute(global::System.String methodName) { } } }",
+                genResult["VisitorToMethodAttribute.g.cs"]
+            );
 
             const string expected = @"using System;
 
@@ -78,7 +81,7 @@ namespace TestSpace
 {
     using EnumVisitorGenerator;
 
-    public static class StateEnumExtension
+    public static partial class StateEnumExtension
     {
         public static void Accept(this State source, IStateVisitor visitor)
         {
@@ -202,7 +205,7 @@ namespace TestSpace
     }
 }";
 
-            Assert.AreEqual(expected, genResult["TestSpace.StateEnumExtension.cs"]);
+            Assert.AreEqual(TestHelper.NormalizeNewLines(expected), TestHelper.NormalizeNewLines(genResult["TestSpace.StateEnumExtension.cs"]));
 
             const string internalExpected = @"using System;
 
@@ -210,7 +213,7 @@ namespace TestSpace
 {
     using EnumVisitorGenerator;
 
-    internal static class InternalStateEnumExtension
+    internal static partial class InternalStateEnumExtension
     {
         internal static void Accept(this InternalState source, IInternalStateVisitor visitor)
         {
@@ -299,12 +302,222 @@ namespace TestSpace
         T CaseMember1(TArg arg);
     }
 }";
-            Assert.AreEqual(internalExpected, genResult["TestSpace.InternalStateEnumExtension.cs"]);
+            Assert.AreEqual(TestHelper.NormalizeNewLines(internalExpected), TestHelper.NormalizeNewLines(genResult["TestSpace.InternalStateEnumExtension.cs"]));
+        }
+
+        [Test]
+        public void VisitorToMethodGeneratesWrapperAndTupleDestructuring()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green,
+        Blue
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorStruct : IColorVisitor<string, (bool eng, int repeat)>
+    {
+        public string CaseRed((bool eng, int repeat) arg) => arg.eng ? ""Red"" : ""Rojo"";
+        public string CaseGreen((bool eng, int repeat) arg) => arg.eng ? ""Green"" : ""Verde"";
+        public string CaseBlue((bool eng, int repeat) arg) => arg.eng ? ""Blue"" : ""Azul"";
+    }
+}";
+
+            var genResult = TestHelper.Verify(source, out var diagnostics);
+
+            Assert.IsEmpty(diagnostics);
+            Assert.IsTrue(genResult.ContainsKey("TestSpace.ColorEnumExtension.cs"));
+
+            var generated = genResult["TestSpace.ColorEnumExtension.cs"];
+            StringAssert.Contains("public static string GetColor(this Color source, bool eng, int repeat)", generated);
+            StringAssert.Contains("var visitor = new global::TestSpace.VisitorStruct();", generated);
+            StringAssert.Contains("return source.Accept<string, global::TestSpace.VisitorStruct", generated);
+            StringAssert.Contains(">(ref visitor, (eng, repeat));", generated);
+        }
+
+        [Test]
+        public void VisitorToMethod_GeneratesWrapperWithoutArgument()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorStruct : IColorVisitor<string>
+    {
+        public string CaseRed() => ""R"";
+        public string CaseGreen() => ""G"";
+    }
+}";
+
+            var genResult = TestHelper.Verify(source, out var diagnostics);
+
+            Assert.IsEmpty(diagnostics);
+            var generated = genResult["TestSpace.ColorEnumExtension.cs"];
+            StringAssert.Contains("public static string GetColor(this Color source)", generated);
+            StringAssert.Contains("return source.Accept<string, global::TestSpace.VisitorStruct>(ref visitor);", generated);
+        }
+
+        [Test]
+        public void VisitorToMethod_AllowsOverloadsWithDifferentArguments()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorNoArg : IColorVisitor<string>
+    {
+        public string CaseRed() => ""R"";
+        public string CaseGreen() => ""G"";
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorBool : IColorVisitor<string, bool>
+    {
+        public string CaseRed(bool arg) => ""R"";
+        public string CaseGreen(bool arg) => ""G"";
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorInt : IColorVisitor<string, int>
+    {
+        public string CaseRed(int arg) => ""R"";
+        public string CaseGreen(int arg) => ""G"";
+    }
+}";
+
+            var genResult = TestHelper.Verify(source, out var diagnostics);
+
+            Assert.IsEmpty(diagnostics);
+            var generated = genResult["TestSpace.ColorEnumExtension.cs"];
+            StringAssert.Contains("public static string GetColor(this Color source)", generated);
+            StringAssert.Contains("public static string GetColor(this Color source, bool arg)", generated);
+            StringAssert.Contains("public static string GetColor(this Color source, int arg)", generated);
+        }
+
+        [Test]
+        public void VisitorToMethod_ReportsCollisionForSameSignature()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorBool1 : IColorVisitor<string, bool>
+    {
+        public string CaseRed(bool arg) => ""R"";
+        public string CaseGreen(bool arg) => ""G"";
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct VisitorBool2 : IColorVisitor<string, bool>
+    {
+        public string CaseRed(bool arg) => ""R"";
+        public string CaseGreen(bool arg) => ""G"";
+    }
+}";
+
+            TestHelper.Verify(source, out var diagnostics);
+
+            Assert.AreEqual(1, diagnostics.Length);
+            Assert.AreEqual("EG0008", diagnostics[0].Descriptor.Id);
+        }
+
+        [Test]
+        public void VisitorToMethod_ReportsWhenNoGeneratedVisitorInterfaceImplemented()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct InvalidVisitor
+    {
+    }
+}";
+
+            TestHelper.Verify(source, out var diagnostics);
+
+            Assert.AreEqual(1, diagnostics.Length);
+            Assert.AreEqual("EG0005", diagnostics[0].Descriptor.Id);
+        }
+
+        [Test]
+        public void VisitorToMethod_ReportsWhenMultipleGeneratedVisitorInterfacesImplemented()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    [VisitorToMethod(""GetColor"")]
+    public struct InvalidVisitor : IColorVisitor<string, bool>, IColorVisitor<string, int>
+    {
+        public string CaseRed(bool arg) => ""R"";
+        public string CaseGreen(bool arg) => ""G"";
+        public string CaseRed(int arg) => ""R"";
+        public string CaseGreen(int arg) => ""G"";
+    }
+}";
+
+            TestHelper.Verify(source, out var diagnostics);
+
+            Assert.AreEqual(1, diagnostics.Length);
+            Assert.AreEqual("EG0009", diagnostics[0].Descriptor.Id);
         }
     }
 
     public static class TestHelper
     {
+        public static string NormalizeNewLines(string input) => input.Replace("\r\n", "\n").Replace("\r", "\n");
+
         public static Dictionary<string, string> Verify(string source, out ImmutableArray<Diagnostic> diagnostics)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source);

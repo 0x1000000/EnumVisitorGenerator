@@ -44,6 +44,15 @@ public class Program
             Color.Green.Accept<string, VisitorStruct, bool>(ref visitor, true);
         }
     }
+
+    [Benchmark]
+    public void StructGeneratedMethod()
+    {
+        for (int i = 0; i < Iterations; i++)
+        {
+            Color.Green.GetColor(true);
+        }
+    }
 }
 
 public class VisitorClass : IColorVisitor<string, bool>
@@ -55,8 +64,10 @@ public class VisitorClass : IColorVisitor<string, bool>
     public string CaseBlue(bool eng) => eng ? "Blue" : "Azul";
 }
 
+[VisitorToMethod("GetColor")]
 public struct VisitorStruct : IColorVisitor<string, bool>
 {
+
     public string CaseRed(bool eng) => eng ? "Red" : "Rojo";
 
     public string CaseGreen(bool eng) => eng ? "Green" : "Verde";

@@ -187,4 +187,32 @@ var translation = new ColorTranslation();
 //boxing does not happen here
 Console.WriteLine(Color.Red.Accept<string, ColorTranslation, bool>(ref translation, false));
 ```
+
+## `VisitorToMethod` for Stateless Struct Visitors
+You can generate a named extension wrapper from a stateless struct visitor:
+
+```cs
+[VisitorToMethod("GetColor")]
+public struct VisitorStruct : IColorVisitor<string, bool>
+{
+    public string CaseRed(bool eng) => eng ? "Red" : "Rojo";
+    public string CaseGreen(bool eng) => eng ? "Green" : "Verde";
+    public string CaseBlue(bool eng) => eng ? "Blue" : "Azul";
+}
+```
+
+Generated in `ColorEnumExtension`:
+
+```cs
+public static string GetColor(this Color source, bool arg)
+{
+    var visitor = new VisitorStruct();
+    return source.Accept<string, VisitorStruct, bool>(ref visitor, arg);
+}
+```
+
+If your visitor is `IColorVisitor<TResult>` (without `TArg`), the generated method has no extra parameters and calls `Accept<TResult, TVisitor>(ref visitor)`.
+
+If `TArg` is a value tuple, it is flattened into multiple method parameters and re-packed for `Accept`.
+
 You can find [more details in this article.](https://itnext.io/achieving-allocation-free-polymorphism-in-c-8eb3c99edbce?source=friends_link&sk=84ff56937fdb4c1100e6ec49f0ee96c1)
