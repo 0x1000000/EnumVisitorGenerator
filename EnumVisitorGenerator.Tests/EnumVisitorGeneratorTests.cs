@@ -583,6 +583,72 @@ namespace TestSpace
         }
 
         [Test]
+        public void VisitorToMethod_AllowsPrivateStructInsideEnumExtension()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    public static partial class ColorEnumExtension
+    {
+        [VisitorToMethod(""GetColorPrivate"")]
+        private struct PrivateVisitor : IColorVisitor<string>
+        {
+            public string CaseRed() => ""R"";
+            public string CaseGreen() => ""G"";
+        }
+    }
+}";
+
+            var genResult = TestHelper.Verify(source, out var diagnostics);
+
+            Assert.IsEmpty(diagnostics);
+            var generated = genResult["TestSpace.ColorEnumExtension.cs"];
+            StringAssert.Contains("public static string GetColorPrivate(this Color source)", generated);
+            StringAssert.Contains("var visitor = new global::TestSpace.ColorEnumExtension.PrivateVisitor();", generated);
+        }
+
+        [Test]
+        public void VisitorToMethod_ReportsPrivateStructInsideNonMatchingEnumExtension()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    public static partial class WrongEnumExtension
+    {
+        [VisitorToMethod(""GetColorPrivate"")]
+        private struct PrivateVisitor : IColorVisitor<string>
+        {
+            public string CaseRed() => ""R"";
+            public string CaseGreen() => ""G"";
+        }
+    }
+}";
+
+            TestHelper.Verify(source, out var diagnostics);
+
+            Assert.AreEqual(1, diagnostics.Length);
+            Assert.AreEqual("EG0011", diagnostics[0].Descriptor.Id);
+        }
+
+        [Test]
         public void VisitorGenerator_ReportsPrivateEnum()
         {
             var source = @"

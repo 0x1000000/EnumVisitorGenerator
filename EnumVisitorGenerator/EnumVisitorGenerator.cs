@@ -391,24 +391,6 @@ public class EnumVisitorGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                if (visitorStructSymbol.DeclaredAccessibility == Accessibility.Private)
-                {
-                    ctx.ReportDiagnostic(
-                        Diagnostic.Create(
-                            new DiagnosticDescriptor(
-                                "EG0011",
-                                "VisitorToMethodAttribute declaration",
-                                "VisitorToMethodAttribute cannot be applied to a private struct",
-                                "Enum Visitor Generator",
-                                DiagnosticSeverity.Error,
-                                true
-                            ),
-                            visitorTarget.Attribute.GetLocation()
-                        )
-                    );
-                    continue;
-                }
-
                 if (!IsStatelessStruct(visitorStructSymbol))
                 {
                     ctx.ReportDiagnostic(
@@ -472,6 +454,25 @@ public class EnumVisitorGenerator : IIncrementalGenerator
                 }
 
                 var binding = bindings[0];
+                if (visitorStructSymbol.DeclaredAccessibility == Accessibility.Private &&
+                    !IsPrivateVisitorInsideMatchingEnumExtension(visitorStructSymbol, binding))
+                {
+                    ctx.ReportDiagnostic(
+                        Diagnostic.Create(
+                            new DiagnosticDescriptor(
+                                "EG0011",
+                                "VisitorToMethodAttribute declaration",
+                                "VisitorToMethodAttribute can be applied to a private struct only when it is declared inside matching {Enum}EnumExtension partial class",
+                                "Enum Visitor Generator",
+                                DiagnosticSeverity.Error,
+                                true
+                            ),
+                            visitorTarget.Attribute.GetLocation()
+                        )
+                    );
+                    continue;
+                }
+
                 var signatureKey = BuildVisitorMethodSignature(
                     methodName,
                     binding.HasArgument,
@@ -683,6 +684,24 @@ public class EnumVisitorGenerator : IIncrementalGenerator
         }
 
         return true;
+    }
+
+    private static bool IsPrivateVisitorInsideMatchingEnumExtension(INamedTypeSymbol visitorStructSymbol, VisitorMethodBinding binding)
+    {
+        var container = visitorStructSymbol.ContainingType;
+        if (container == null)
+        {
+            return false;
+        }
+
+        if (!string.Equals(container.Name, $"{binding.EnumName}EnumExtension", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var containerNamespace = container.ContainingNamespace;
+        var containerNamespaceName = containerNamespace.IsGlobalNamespace ? string.Empty : containerNamespace.ToDisplayString();
+        return string.Equals(containerNamespaceName, NormalizeNamespace(binding.EnumNamespaceName), StringComparison.Ordinal);
     }
 
     private static List<VisitorMethodBinding> GetVisitorMethodBindings(
