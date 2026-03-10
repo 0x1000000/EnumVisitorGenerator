@@ -45,8 +45,28 @@ public class EnumVisitorGenerator : IIncrementalGenerator
         public HashSet<string> VisitorMethodSignatures { get; } = new(StringComparer.Ordinal);
     }
 
+    private sealed class VisitorExtensionGenerationContext(
+        string enumName,
+        string namespaceName,
+        bool hasNamespace,
+        bool isPublic,
+        string hintName)
+    {
+        public string EnumName { get; } = enumName;
+        public string NamespaceName { get; } = namespaceName;
+        public bool HasNamespace { get; } = hasNamespace;
+        public bool IsPublic { get; } = isPublic;
+        public string HintName { get; } = hintName;
+        public List<MemberDeclarationSyntax> Methods { get; } = new();
+        public HashSet<string> MethodSignatures { get; } = new(StringComparer.Ordinal);
+    }
+
     private record struct VisitorMethodBinding(
-        EnumGenerationContext EnumContext,
+        EnumGenerationContext? EnumContext,
+        string EnumName,
+        string EnumNamespaceName,
+        bool EnumHasNamespace,
+        bool EnumIsPublic,
         string VisitorTypeName,
         string ResultTypeName,
         bool HasArgument,
@@ -207,7 +227,7 @@ public class EnumVisitorGenerator : IIncrementalGenerator
         var enumTargets = source.Left.Right;
         var visitorTargets = source.Right;
 
-        if (enumTargets.IsDefaultOrEmpty)
+        if (enumTargets.IsDefaultOrEmpty && visitorTargets.IsDefaultOrEmpty)
         {
             return;
         }
@@ -295,16 +315,17 @@ public class EnumVisitorGenerator : IIncrementalGenerator
             );
         }
 
-        if (!visitorTargets.IsDefaultOrEmpty && enumGenerationContexts.Count > 0)
-        {
-            var enumByNameAndNamespace = enumGenerationContexts.ToDictionary(
-                c => GetEnumKey(c.NamespaceName, c.EnumName),
-                c => c,
-                StringComparer.Ordinal
-            );
-            var enumByName = enumGenerationContexts.GroupBy(c => c.EnumName, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var enumByNameAndNamespace = enumGenerationContexts.ToDictionary(
+            c => GetEnumKey(c.NamespaceName, c.EnumName),
+            c => c,
+            StringComparer.Ordinal
+        );
+        var enumByName = enumGenerationContexts.GroupBy(c => c.EnumName, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var externalVisitorExtensions = new Dictionary<string, VisitorExtensionGenerationContext>(StringComparer.Ordinal);
 
+        if (!visitorTargets.IsDefaultOrEmpty)
+        {
             foreach (var visitorTarget in visitorTargets)
             {
                 if (visitorTarget.Attribute2 != null)
@@ -421,7 +442,56 @@ public class EnumVisitorGenerator : IIncrementalGenerator
                     binding.ArgTypeSyntax
                 );
 
-                if (!binding.EnumContext.VisitorMethodSignatures.Add(signatureKey))
+                if (binding.EnumContext != null)
+                {
+                    if (!binding.EnumContext.VisitorMethodSignatures.Add(signatureKey))
+                    {
+                        ctx.ReportDiagnostic(
+                            Diagnostic.Create(
+                                new DiagnosticDescriptor(
+                                    "EG0008",
+                                    "VisitorToMethod method collision",
+                                    "VisitorToMethodAttribute method name with the same arguments has already been used for this enum (overloads with different arguments are allowed)",
+                                    "Enum Visitor Generator",
+                                    DiagnosticSeverity.Error,
+                                    true
+                                ),
+                                visitorTarget.Attribute.GetLocation()
+                            )
+                        );
+                        continue;
+                    }
+
+                    binding.EnumContext.VisitorMethods.Add(
+                        GenerateVisitorToMethod(
+                            binding.EnumContext.IsPublic,
+                            binding.EnumContext.EnumName,
+                            methodName,
+                            binding.VisitorTypeName,
+                            binding.ResultTypeName,
+                            binding.HasArgument,
+                            binding.ArgTypeName,
+                            binding.ArgTypeSymbol,
+                            binding.ArgTypeSyntax
+                        )
+                    );
+                    continue;
+                }
+
+                var extensionKey = GetEnumKey(binding.EnumNamespaceName, binding.EnumName);
+                if (!externalVisitorExtensions.TryGetValue(extensionKey, out var extensionContext))
+                {
+                    extensionContext = new VisitorExtensionGenerationContext(
+                        binding.EnumName,
+                        binding.EnumNamespaceName,
+                        binding.EnumHasNamespace,
+                        binding.EnumIsPublic,
+                        CreateVisitorExtensionHintName(binding.EnumNamespaceName, binding.EnumHasNamespace, binding.EnumName)
+                    );
+                    externalVisitorExtensions.Add(extensionKey, extensionContext);
+                }
+
+                if (!extensionContext.MethodSignatures.Add(signatureKey))
                 {
                     ctx.ReportDiagnostic(
                         Diagnostic.Create(
@@ -439,10 +509,10 @@ public class EnumVisitorGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                binding.EnumContext.VisitorMethods.Add(
+                extensionContext.Methods.Add(
                     GenerateVisitorToMethod(
-                        binding.EnumContext.IsPublic,
-                        binding.EnumContext.EnumName,
+                        extensionContext.IsPublic,
+                        extensionContext.EnumName,
                         methodName,
                         binding.VisitorTypeName,
                         binding.ResultTypeName,
@@ -499,6 +569,15 @@ public class EnumVisitorGenerator : IIncrementalGenerator
 
             ctx.AddSource(enumContext.HintName, compilationUnitSyntax.ToFullString());
         }
+
+        foreach (var extensionContext in externalVisitorExtensions.Values)
+        {
+            var compilationUnitSyntax = CompilationUnit()
+                .WithMembers(SingletonList(GenerateVisitorExtensionRoot(extensionContext)))
+                .NormalizeWhitespace();
+
+            ctx.AddSource(extensionContext.HintName, compilationUnitSyntax.ToFullString());
+        }
     }
 
     private static string GetEnumKey(string namespaceName, string enumName) => $"{NormalizeNamespace(namespaceName)}|{enumName}";
@@ -507,6 +586,29 @@ public class EnumVisitorGenerator : IIncrementalGenerator
         value.StartsWith("global::", StringComparison.Ordinal)
             ? value.Substring("global::".Length)
             : value;
+
+    private static string CreateVisitorExtensionHintName(string namespaceName, bool hasNamespace, string enumName) =>
+        hasNamespace
+            ? $"{namespaceName}.{enumName}EnumExtension.VisitorToMethod.cs"
+            : $"{enumName}EnumExtension.VisitorToMethod.cs";
+
+    private static MemberDeclarationSyntax GenerateVisitorExtensionRoot(VisitorExtensionGenerationContext extensionContext)
+    {
+        var classDeclaration = ClassDeclaration($"{extensionContext.EnumName}EnumExtension")
+            .WithModifiers(
+                TokenList(
+                    Token(extensionContext.IsPublic ? SyntaxKind.PublicKeyword : SyntaxKind.InternalKeyword),
+                    Token(SyntaxKind.StaticKeyword),
+                    Token(SyntaxKind.PartialKeyword)
+                )
+            )
+            .WithMembers(List(extensionContext.Methods));
+
+        return extensionContext.HasNamespace
+            ? NamespaceDeclaration(ParseName(extensionContext.NamespaceName))
+                .WithMembers(SingletonList<MemberDeclarationSyntax>(classDeclaration))
+            : classDeclaration;
+    }
 
     private static string? GetMethodName(AttributeSyntax attributeSyntax, SemanticModel semanticModel)
     {
@@ -582,9 +684,23 @@ public class EnumVisitorGenerator : IIncrementalGenerator
                 enumByNameAndNamespace,
                 enumByName);
 
-            if (enumContext == null)
+            string enumNamespaceName;
+            bool enumHasNamespace;
+            bool enumIsPublic;
+
+            if (enumContext != null)
             {
-                continue;
+                enumNamespaceName = enumContext.NamespaceName;
+                enumHasNamespace = true;
+                enumIsPublic = enumContext.IsPublic;
+            }
+            else
+            {
+                var interfaceSymbol = semanticModel.GetTypeInfo(baseTypeSyntax.Type).Type as INamedTypeSymbol;
+                if (!TryResolveReferencedEnum(interfaceSymbol, enumName, out enumNamespaceName, out enumHasNamespace, out enumIsPublic))
+                {
+                    continue;
+                }
             }
 
             var resultTypeName = GetTypeName(resultTypeSyntax, semanticModel);
@@ -599,6 +715,10 @@ public class EnumVisitorGenerator : IIncrementalGenerator
             bindings.Add(
                 new VisitorMethodBinding(
                     enumContext,
+                    enumName,
+                    enumNamespaceName,
+                    enumHasNamespace,
+                    enumIsPublic,
                     visitorTypeName,
                     resultTypeName,
                     hasArgument,
@@ -610,6 +730,35 @@ public class EnumVisitorGenerator : IIncrementalGenerator
         }
 
         return bindings;
+    }
+
+    private static bool TryResolveReferencedEnum(
+        INamedTypeSymbol? interfaceSymbol,
+        string enumName,
+        out string namespaceName,
+        out bool hasNamespace,
+        out bool isPublic)
+    {
+        namespaceName = string.Empty;
+        hasNamespace = false;
+        isPublic = false;
+
+        if (interfaceSymbol == null)
+        {
+            return false;
+        }
+
+        var containingNamespace = interfaceSymbol.ContainingNamespace;
+        var enumSymbol = containingNamespace.GetTypeMembers(enumName).FirstOrDefault(t => t.TypeKind == TypeKind.Enum);
+        if (enumSymbol == null)
+        {
+            return false;
+        }
+
+        hasNamespace = !containingNamespace.IsGlobalNamespace;
+        namespaceName = hasNamespace ? containingNamespace.ToDisplayString() : string.Empty;
+        isPublic = enumSymbol.DeclaredAccessibility == Accessibility.Public;
+        return true;
     }
 
     private static string GetTypeName(TypeSyntax typeSyntax, SemanticModel semanticModel)

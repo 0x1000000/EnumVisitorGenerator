@@ -373,6 +373,43 @@ namespace TestSpace
             StringAssert.Contains("return source.Accept<string, global::TestSpace.VisitorStruct>(ref visitor);", generated);
         }
 
+
+        [Test]
+        public void VisitorToMethod_GeneratesWrapperForReferencedEnum()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+    using EnumVisitorGenerator.IntegrationTests;
+
+    [VisitorToMethod(""GetStateName"")]
+    public struct ExternalVisitor : IStateVisitor<string, bool>
+    {
+        public string CaseInitial(bool eng) => eng ? ""Initial"" : ""Inicio"";
+
+        public string CaseInProgress(bool eng) => eng ? ""InProgress"" : ""EnProgreso"";
+
+        public string CaseFinish(bool eng) => eng ? ""Finish"" : ""Fin"";
+    }
+}";
+
+            var genResult = TestHelper.Verify(
+                source,
+                out var diagnostics,
+                TestHelper.GetIntegrationTestsReference()
+            );
+
+            Assert.IsEmpty(diagnostics);
+            Assert.IsTrue(genResult.ContainsKey("EnumVisitorGenerator.IntegrationTests.StateEnumExtension.VisitorToMethod.cs"));
+
+            var generated = genResult["EnumVisitorGenerator.IntegrationTests.StateEnumExtension.VisitorToMethod.cs"];
+            StringAssert.Contains("namespace EnumVisitorGenerator.IntegrationTests", generated);
+            StringAssert.Contains("public static partial class StateEnumExtension", generated);
+            StringAssert.Contains("public static string GetStateName(this State source, bool arg)", generated);
+            StringAssert.Contains("return source.Accept<string, global::TestSpace.ExternalVisitor, bool>(ref visitor, arg);", generated);
+        }
+
         [Test]
         public void VisitorToMethod_AllowsOverloadsWithDifferentArguments()
         {
@@ -518,17 +555,56 @@ namespace TestSpace
     {
         public static string NormalizeNewLines(string input) => input.Replace("\r\n", "\n").Replace("\r", "\n");
 
-        public static Dictionary<string, string> Verify(string source, out ImmutableArray<Diagnostic> diagnostics)
+        public static MetadataReference GetIntegrationTestsReference()
+        {
+            var current = new DirectoryInfo(AppContext.BaseDirectory);
+            while (current != null && !File.Exists(Path.Combine(current.FullName, "EnumVisitorGenerator.sln")))
+            {
+                current = current.Parent;
+            }
+
+            if (current == null)
+            {
+                throw new DirectoryNotFoundException("Could not locate solution root for integration test reference.");
+            }
+
+            var assemblyPath = Path.Combine(
+                current.FullName,
+                "EnumVisitorGenerator.IntegrationTests",
+                "bin",
+                "Debug",
+                "net8.0",
+                "EnumVisitorGenerator.IntegrationTests.dll"
+            );
+
+            if (!File.Exists(assemblyPath))
+            {
+                throw new FileNotFoundException("Integration test assembly was not found.", assemblyPath);
+            }
+
+            return MetadataReference.CreateFromFile(assemblyPath);
+        }
+
+        public static Dictionary<string, string> Verify(
+            string source,
+            out ImmutableArray<Diagnostic> diagnostics,
+            params MetadataReference[] additionalReferences)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source);
+            var references = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.Location))
+                .Select(a => MetadataReference.CreateFromFile(a.Location))
+                .Concat(additionalReferences)
+                .GroupBy(r => r.Display, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToArray();
 
             // Create a Roslyn compilation for the syntax tree.
             var compilation = CSharpCompilation.Create(
                 assemblyName: "Tests",
                 syntaxTrees: new[] { syntaxTree },
-                new[] { MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location) }
+                references
             );
-
 
             // Create an instance of our EnumGenerator incremental source generator
             var generator = new EnumVisitorGenerator();
