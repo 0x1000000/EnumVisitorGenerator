@@ -255,6 +255,26 @@ public class EnumVisitorGenerator : IIncrementalGenerator
             }
 
             var enumDeclarationSyntax = semanticTarget.Enum;
+            var enumSemanticModel = compilation.GetSemanticModel(enumDeclarationSyntax.SyntaxTree);
+            var enumSymbol = enumSemanticModel.GetDeclaredSymbol(enumDeclarationSyntax);
+            if (enumSymbol?.DeclaredAccessibility == Accessibility.Private)
+            {
+                ctx.ReportDiagnostic(
+                    Diagnostic.Create(
+                        new DiagnosticDescriptor(
+                            "EG0010",
+                            "VisitorGeneratorAttribute declaration",
+                            "VisitorGeneratorAttribute cannot be applied to a private enum",
+                            "Enum Visitor Generator",
+                            DiagnosticSeverity.Error,
+                            true
+                        ),
+                        semanticTarget.Attribute.GetLocation()
+                    )
+                );
+                continue;
+            }
+
             var namespaceSyntax = GetNamespace(enumDeclarationSyntax, out var parentTypeSyntax);
             if (namespaceSyntax == null)
             {
@@ -368,6 +388,24 @@ public class EnumVisitorGenerator : IIncrementalGenerator
                 var structSymbol = semanticModel.GetDeclaredSymbol(visitorTarget.Struct);
                 if (structSymbol is not INamedTypeSymbol visitorStructSymbol)
                 {
+                    continue;
+                }
+
+                if (visitorStructSymbol.DeclaredAccessibility == Accessibility.Private)
+                {
+                    ctx.ReportDiagnostic(
+                        Diagnostic.Create(
+                            new DiagnosticDescriptor(
+                                "EG0011",
+                                "VisitorToMethodAttribute declaration",
+                                "VisitorToMethodAttribute cannot be applied to a private struct",
+                                "Enum Visitor Generator",
+                                DiagnosticSeverity.Error,
+                                true
+                            ),
+                            visitorTarget.Attribute.GetLocation()
+                        )
+                    );
                     continue;
                 }
 

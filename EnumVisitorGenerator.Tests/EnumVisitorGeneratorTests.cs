@@ -549,6 +549,63 @@ namespace TestSpace
             Assert.AreEqual(1, diagnostics.Length);
             Assert.AreEqual("EG0009", diagnostics[0].Descriptor.Id);
         }
+
+        [Test]
+        public void VisitorToMethod_ReportsPrivateStruct()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    [VisitorGenerator]
+    public enum Color
+    {
+        Red,
+        Green
+    }
+
+    public class Container
+    {
+        [VisitorToMethod(""GetColor"")]
+        private struct PrivateVisitor : IColorVisitor<string>
+        {
+            public string CaseRed() => ""R"";
+            public string CaseGreen() => ""G"";
+        }
+    }
+}";
+
+            TestHelper.Verify(source, out var diagnostics);
+
+            Assert.AreEqual(1, diagnostics.Length);
+            Assert.AreEqual("EG0011", diagnostics[0].Descriptor.Id);
+        }
+
+        [Test]
+        public void VisitorGenerator_ReportsPrivateEnum()
+        {
+            var source = @"
+namespace TestSpace
+{
+    using EnumVisitorGenerator;
+
+    public class Container
+    {
+        [VisitorGenerator]
+        private enum PrivateState
+        {
+            Initial,
+            Finish
+        }
+    }
+}";
+
+            TestHelper.Verify(source, out var diagnostics);
+
+            Assert.AreEqual(1, diagnostics.Length);
+            Assert.AreEqual("EG0010", diagnostics[0].Descriptor.Id);
+        }
     }
 
     public static class TestHelper
