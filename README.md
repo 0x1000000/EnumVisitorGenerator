@@ -215,4 +215,26 @@ If your visitor is `IColorVisitor<TResult>` (without `TArg`), the generated meth
 
 If `TArg` is a value tuple, it is flattened into multiple method parameters and re-packed for `Accept`.
 
+Example:
+
+```cs
+[VisitorToMethod("GetColor")]
+public struct VisitorStruct : IColorVisitor<string, (bool eng, int repeat)>
+{
+    public string CaseRed((bool eng, int repeat) arg) => arg.eng ? "Red" : "Rojo";
+    public string CaseGreen((bool eng, int repeat) arg) => arg.eng ? "Green" : "Verde";
+    public string CaseBlue((bool eng, int repeat) arg) => arg.eng ? "Blue" : "Azul";
+}
+```
+
+Generated in `ColorEnumExtension`:
+
+```cs
+public static string GetColor(this Color source, bool eng, int repeat)
+{
+    var visitor = new VisitorStruct();
+    return source.Accept<string, VisitorStruct, (bool eng, int repeat)>(ref visitor, (eng, repeat));
+}
+```
+
 You can find [more details in this article.](https://itnext.io/achieving-allocation-free-polymorphism-in-c-8eb3c99edbce?source=friends_link&sk=84ff56937fdb4c1100e6ec49f0ee96c1)

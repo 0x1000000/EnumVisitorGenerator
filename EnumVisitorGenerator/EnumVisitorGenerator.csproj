@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
@@ -10,21 +10,23 @@
     <Authors>Dmitry Tikhonov</Authors>
     <Copyright>Dmitry Tikhonov</Copyright>
     <Company />
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Summary>Generates visitor interfaces and extension methods for marked enums</Summary>
     <Description>
       Mark an enum with [VisitorGenerator] and the source generator creates visitor interfaces and strongly-typed Accept extension methods that dispatch by enum member.
       It also supports [VisitorToMethod] on stateless struct visitors to generate ergonomic enum extension wrappers, including tuple argument flattening.
       This helps replace error-prone manual switches while keeping allocation-free struct visitor paths.
     </Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>https://github.com/0x1000000/EnumVisitorGenerator/blob/main/CHANGELOG.md</PackageReleaseNotes>
     <PackageProjectUrl>https://github.com/0x1000000/EnumVisitorGenerator</PackageProjectUrl>
     <PackageTags>enum visitor sourcegenerator roslyn codegen switch extension-method</PackageTags>
-    <AssemblyVersion>1.1.1</AssemblyVersion>
-    <FileVersion>1.1.1</FileVersion>
+    <AssemblyVersion>1.1.2</AssemblyVersion>
+    <FileVersion>1.1.2</FileVersion>
     <SignAssembly>True</SignAssembly>
     <DelaySign>false</DelaySign>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <DevelopmentDependency>true</DevelopmentDependency>
     <AssemblyOriginatorKeyFile>.\..\EnumVisitorGenerator.snk</AssemblyOriginatorKeyFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
@@ -37,6 +39,7 @@
 
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="..\README.md" Pack="true" PackagePath="" Visible="false" Link="README.md" />
   </ItemGroup>
 
 </Project>
